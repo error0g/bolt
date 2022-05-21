@@ -1,4 +1,5 @@
-// +build arm64
+//go:build ppc64le
+// +build ppc64le
 
 package bolt
 

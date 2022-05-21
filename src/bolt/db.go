@@ -523,6 +523,7 @@ func (db *DB) beginRWTx() (*Tx, error) {
 	}
 
 	// Create a transaction associated with the database.
+	//初始化写事务
 	t := &Tx{writable: true}
 	t.init(db)
 	db.rwtx = t

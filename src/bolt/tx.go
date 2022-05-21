@@ -46,6 +46,7 @@ func (tx *Tx) init(db *DB) {
 	tx.pages = nil
 
 	// Copy the meta page since it can be changed by the writer.
+	//拷贝db的meta数据至当前事务
 	tx.meta = &meta{}
 	db.meta().copy(tx.meta)
 

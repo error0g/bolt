@@ -2,3 +2,8 @@
 *.test
 *.swp
 /bin/
+/my.db
+/my.db.lock
+*.xml
+.idea
+*.iml
