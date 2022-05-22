@@ -51,6 +51,7 @@ func (tx *Tx) init(db *DB) {
 	db.meta().copy(tx.meta)
 
 	// Copy over the root bucket.
+	//拷贝meta的root
 	tx.root = newBucket(tx)
 	tx.root.bucket = &bucket{}
 	*tx.root.bucket = tx.meta.root

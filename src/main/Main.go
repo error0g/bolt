@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	//seek过程中把pageId转换为Node或者Page
+	//读取数据库文件
 	db, err := bolt.Open("my.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -21,9 +21,15 @@ func main() {
 	}
 	defer tx.Rollback()
 
-	// Use the transaction...
-	bucket := tx.Bucket([]byte("MyBucket"))
-	bucket.Put([]byte("5"), []byte("5"))
+	// 使用读事务创建一个bucket
+	bucket, err := tx.CreateBucket([]byte("MyBucket"))
+	if err != nil {
+		fmt.Println(err)
+	}
+	//插入一个数据
+	bucket.Put([]byte("foo"), []byte("bar"))
+
+	//提交事务
 	// Commit the transaction and check for error.
 	if err := tx.Commit(); err != nil {
 		fmt.Println(err)

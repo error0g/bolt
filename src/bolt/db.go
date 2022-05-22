@@ -100,13 +100,13 @@ type DB struct {
 	dataref  []byte   // mmap'ed readonly, write throws SEGV
 	data     *[maxMapSize]byte
 	datasz   int
-	filesz   int // current on disk file size
-	meta0    *meta
+	filesz   int   // current on disk file size
+	meta0    *meta //两个meta原因是为了保证数据一致性，每次事务写到数据库只使用其中一个meta
 	meta1    *meta
 	pageSize int
 	opened   bool
-	rwtx     *Tx
-	txs      []*Tx
+	rwtx     *Tx   //写事务
+	txs      []*Tx //读事务
 	freelist *freelist
 	stats    Stats
 
@@ -191,6 +191,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	// Default values for test hooks
 	db.ops.writeAt = db.file.WriteAt
 
+	//数据库初始化
 	// Initialize the database if it doesn't exist.
 	if info, err := db.file.Stat(); err != nil {
 		return nil, err
@@ -226,6 +227,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		},
 	}
 
+	//mmp映射文件到db
 	// Memory map the data file.
 	if err := db.mmap(options.InitialMmapSize); err != nil {
 		_ = db.close()
@@ -344,6 +346,7 @@ func (db *DB) init() error {
 	// Set the page size to the OS page size.
 	db.pageSize = os.Getpagesize()
 
+	//初始化两个一样的meta页面
 	// Create two meta pages on a buffer.
 	buf := make([]byte, db.pageSize*4)
 	for i := 0; i < 2; i++ {
@@ -825,6 +828,7 @@ func (db *DB) meta() *meta {
 	panic("bolt.DB.meta(): invalid meta pages")
 }
 
+//分配存储页
 // allocate returns a contiguous block of memory starting at a given page.
 func (db *DB) allocate(count int) (*page, error) {
 	// Allocate a temporary buffer for the page.
@@ -976,7 +980,7 @@ type meta struct {
 	flags    uint32
 	root     bucket
 	freelist pgid
-	pgid     pgid
+	pgid     pgid //当前最大页面id？
 	txid     txid
 	checksum uint64
 }
