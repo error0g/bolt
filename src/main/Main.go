@@ -7,6 +7,7 @@ import (
 )
 
 func main() {
+	//seek过程中把pageId转换为Node或者Page
 	db, err := bolt.Open("my.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -21,12 +22,8 @@ func main() {
 	defer tx.Rollback()
 
 	// Use the transaction...
-	bucket, err := tx.CreateBucket([]byte("MyBucket"))
-	if err != nil {
-		fmt.Println(err)
-	}
-	bucket.Put([]byte("foo"), []byte("bar"))
-
+	bucket := tx.Bucket([]byte("MyBucket"))
+	bucket.Put([]byte("5"), []byte("5"))
 	// Commit the transaction and check for error.
 	if err := tx.Commit(); err != nil {
 		fmt.Println(err)

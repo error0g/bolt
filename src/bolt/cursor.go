@@ -155,15 +155,16 @@ func (c *Cursor) seek(seek []byte) (key []byte, value []byte, flags uint32) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
 
 	// Start from root page/node and traverse to correct page.
+	//初始化stack
 	c.stack = c.stack[:0]
 	c.search(seek, c.bucket.root)
+	//从栈顶拿出Node或者Page
 	ref := &c.stack[len(c.stack)-1]
 
 	// If the cursor is pointing to the end of page/node then return nil.
 	if ref.index >= ref.count() {
 		return nil, nil, 0
 	}
-
 	// If this is a bucket then return a nil value.
 	return c.keyValue()
 }
@@ -265,6 +266,7 @@ func (c *Cursor) search(key []byte, pgid pgid) {
 	}
 
 	if n != nil {
+		//二分查找递归search
 		c.searchNode(key, n)
 		return
 	}

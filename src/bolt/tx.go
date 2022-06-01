@@ -195,6 +195,8 @@ func (tx *Tx) Commit() error {
 	}
 
 	// Write dirty pages to disk.
+	//mmap读取，手动写入？ 如果物理内存不足了 mmap会把脏页未提交的数据刷回本地嘛
+	//mmap 只读模式，就算内存不足也不会把脏页刷新到本地。
 	startTime = time.Now()
 	if err := tx.write(); err != nil {
 		tx.rollback()

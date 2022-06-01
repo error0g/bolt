@@ -17,7 +17,7 @@ type node struct {
 	pgid       pgid
 	parent     *node
 	children   nodes
-	inodes     inodes
+	inodes     inodes //内部元素
 }
 
 // root returns the top-level node this node is attached to.

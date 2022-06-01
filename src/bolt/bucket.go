@@ -306,6 +306,7 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 
 	// Insert into node.
 	key = cloneBytes(key)
+	//node()方法会把Cursor里面的Page转换成Node
 	c.node().put(key, key, value, 0, 0)
 
 	return nil
@@ -702,9 +703,11 @@ func (b *Bucket) dereference() {
 
 // pageNode returns the in-memory node, if it exists.
 // Otherwise returns the underlying page.
+//已经持久化的数据似乎是没有转成node，所以可能node里面没有只能去page，但是引起一个问题就是node和page是如何保持整课树平衡因为在操作中它们是分开
 func (b *Bucket) pageNode(id pgid) (*page, *node) {
 	// Inline buckets have a fake page embedded in their value so treat them
 	// differently. We'll return the rootNode (if available) or the fake page.
+	//这是一个bucket
 	if b.root == 0 {
 		if id != 0 {
 			panic(fmt.Sprintf("inline bucket non-zero page access(2): %d != 0", id))

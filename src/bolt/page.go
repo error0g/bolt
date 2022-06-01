@@ -30,7 +30,7 @@ type pgid uint64
 type page struct {
 	id       pgid
 	flags    uint16
-	count    uint16
+	count    uint16 //元素数量
 	overflow uint32
 	ptr      uintptr
 }
