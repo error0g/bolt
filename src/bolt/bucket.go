@@ -524,8 +524,9 @@ func (b *Bucket) _forEachPageNode(pgid pgid, depth int, fn func(*page, *node, in
 }
 
 // spill writes all the nodes for this bucket to dirty pages.
+//1、分裂bucket 2、分裂node
 func (b *Bucket) spill() error {
-	// Spill all child buckets first.
+	// 1 Spill all child buckets first.
 	for name, child := range b.buckets {
 		// If the child bucket is small enough and it has no child buckets then
 		// write it inline into the parent bucket's page. Otherwise spill it
@@ -535,6 +536,7 @@ func (b *Bucket) spill() error {
 			child.free()
 			value = child.write()
 		} else {
+			//当内联节点超出  b.tx.db.pageSize / 4 需要分裂成为一个节点
 			if err := child.spill(); err != nil {
 				return err
 			}
@@ -567,7 +569,8 @@ func (b *Bucket) spill() error {
 		return nil
 	}
 
-	// Spill nodes.
+	//2 Spill nodes.
+	//从root开始向下分裂
 	if err := b.rootNode.spill(); err != nil {
 		return err
 	}

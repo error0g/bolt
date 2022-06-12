@@ -270,9 +270,11 @@ func (n *node) split(pageSize int) []*node {
 
 // splitTwo breaks up a node into two smaller nodes, if appropriate.
 // This should only be called from the split() function.
+//根据fillPercent分裂第二个node范围
 func (n *node) splitTwo(pageSize int) (*node, *node) {
 	// Ignore the split if the page doesn't have at least enough nodes for
 	// two pages or if the nodes can fit in a single page.
+	//分裂条件
 	if len(n.inodes) <= (minKeysPerPage*2) || n.sizeLessThan(pageSize) {
 		return n, nil
 	}
@@ -345,6 +347,7 @@ func (n *node) spill() error {
 	// Spill child nodes first. Child nodes can materialize sibling nodes in
 	// the case of split-merge so we cannot use a range loop. We have to check
 	// the children size on every loop iteration.
+	//先递归分裂child node,
 	sort.Sort(n.children)
 	for i := 0; i < len(n.children); i++ {
 		if err := n.children[i].spill(); err != nil {
@@ -359,6 +362,7 @@ func (n *node) spill() error {
 	var nodes = n.split(tx.db.pageSize)
 	for _, node := range nodes {
 		// Add node's page to the freelist if it's not new.
+		//释放旧的页，将当前已经结点分配新的page
 		if node.pgid > 0 {
 			tx.db.freelist.free(tx.meta.txid, tx.page(node.pgid))
 			node.pgid = 0
