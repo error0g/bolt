@@ -422,8 +422,10 @@ func (n *node) rebalance() {
 	}
 
 	// Root node has special handling.
+	//根节点特殊处理
 	if n.parent == nil {
 		// If root node is a branch and only has one node then collapse it.
+		//如果root node是一个分支而且他只有一个节点，将子节点移动至root node。
 		if !n.isLeaf && len(n.inodes) == 1 {
 			// Move root's child up.
 			child := n.bucket.node(n.inodes[0].pgid, n)
@@ -448,6 +450,7 @@ func (n *node) rebalance() {
 	}
 
 	// If node has no keys then just remove it.
+	// 如果这个节点没有元素了，可在父节点直接删除。
 	if n.numChildren() == 0 {
 		n.parent.del(n.key)
 		n.parent.removeChild(n)
@@ -469,11 +472,14 @@ func (n *node) rebalance() {
 	}
 
 	// If both this node and the target node are too small then merge them.
+	//如果target是next node 就删除next node 这样只需要维护inode不用维护Key,因为next node的key是比node大
 	if useNextSibling {
 		// Reparent all child nodes being moved.
+		//inodes里面可能是 branch node或者leaf node,如果是branch node 加入到children
 		for _, inode := range target.inodes {
 			if child, ok := n.bucket.nodes[inode.pgid]; ok {
 				child.parent.removeChild(child)
+				//把target的子节点移动至node
 				child.parent = n
 				child.parent.children = append(child.parent.children, child)
 			}
@@ -504,6 +510,7 @@ func (n *node) rebalance() {
 	}
 
 	// Either this node or the target node was deleted from the parent so rebalance it.
+	//parent node有被删除节点，所以也要维持平衡
 	n.parent.rebalance()
 }
 
@@ -598,7 +605,7 @@ func (s nodes) Less(i, j int) bool {
 // to an element which hasn't been added to a page yet.
 type inode struct {
 	flags uint32
-	pgid  pgid
+	pgid  pgid //用于 branch node, 子节点的 page id
 	key   []byte
 	value []byte
 }
