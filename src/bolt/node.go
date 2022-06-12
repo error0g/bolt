@@ -359,6 +359,7 @@ func (n *node) spill() error {
 	n.children = nil
 
 	// Split nodes into appropriate sizes. The first node will always be n.
+	//分裂在运行时的node，put时并没有分裂。
 	var nodes = n.split(tx.db.pageSize)
 	for _, node := range nodes {
 		// Add node's page to the freelist if it's not new.
@@ -383,6 +384,7 @@ func (n *node) spill() error {
 		node.spilled = true
 
 		// Insert into parent inodes.
+		//node.put最小Key时并没有更新parent node的key,所以在split时统一更新
 		if node.parent != nil {
 			var key = node.key
 			if key == nil {
