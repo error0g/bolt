@@ -163,6 +163,7 @@ func (n *node) read(p *page) {
 	n.isLeaf = ((p.flags & leafPageFlag) != 0)
 	n.inodes = make(inodes, int(p.count))
 
+	//实例化page属性赋值
 	for i := 0; i < int(p.count); i++ {
 		inode := &n.inodes[i]
 		if n.isLeaf {
@@ -207,6 +208,7 @@ func (n *node) write(p *page) {
 	}
 
 	// Loop over each item and write it to the page.
+	//先偏移len(n.inodes)个pageElement
 	b := (*[maxAllocSize]byte)(unsafe.Pointer(&p.ptr))[n.pageElementSize()*len(n.inodes):]
 	for i, item := range n.inodes {
 		_assert(len(item.key) > 0, "write: zero-length inode key")
@@ -236,6 +238,7 @@ func (n *node) write(p *page) {
 		}
 
 		// Write data for the element to the end of the page.
+		//页面边写入边移动位置
 		copy(b[0:], item.key)
 		b = b[klen:]
 		copy(b[0:], item.value)
