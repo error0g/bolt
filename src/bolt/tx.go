@@ -550,11 +550,12 @@ func (tx *Tx) write() error {
 // writeMeta writes the meta to the disk.
 func (tx *Tx) writeMeta() error {
 	// Create a temporary buffer for the meta page.
-	buf := make([]byte, tx.db.pageSize)
-	p := tx.db.pageInBuffer(buf, 0)
+	buf := make([]byte, tx.db.pageSize) //创建db.pageSize大小的byte数组
+	p := tx.db.pageInBuffer(buf, 0)     //实例化page
 	tx.meta.write(p)
 
 	// Write the meta page to file.
+	//写入文件mmap映射是虚拟地址，修改后即可读取到
 	if _, err := tx.db.ops.writeAt(buf, int64(p.id)*int64(tx.db.pageSize)); err != nil {
 		return err
 	}

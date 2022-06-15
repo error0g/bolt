@@ -227,7 +227,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		},
 	}
 
-	//mmp映射文件到db
+	//mmp映射文件到db.data[]
 	// Memory map the data file.
 	if err := db.mmap(options.InitialMmapSize); err != nil {
 		_ = db.close()
