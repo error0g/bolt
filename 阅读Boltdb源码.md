@@ -8,7 +8,7 @@ tags:
 # 阅读建议
 
 文章由浅入深，出现新概念会用一两句话介绍，而不用继续陷入分支细节。
-阅读时最好具备(Go、Java、C++)其中一门语言。些少的数据库知识，如果你还在处于不知道基础的 SQL 怎么写的阶段建议先学基础，再回来继续阅读。
+阅读时最好具备(Go、Java、C++)其中一门语言。一些少许的数据库知识，如果你还在处于不知道基础的 SQL 怎么写的阶段建议先学基础，再回来继续阅读。
 
 BoltDB 整体很简单，没有 SQL ，没有分布式，等等，只是一个纯粹的带简单事务的数据库。
 
@@ -79,6 +79,7 @@ func (p *page) meta() *meta {
     return (*meta)(unsafe.Pointer(&p.ptr))  //&p.ptr=首地址+meta指针需要的内存大小
 }
 ```
+![page_meta](./img/page_meta.png)</br>
 ## Meta 页
 ```go
 //db.go
@@ -120,16 +121,18 @@ func (db *DB) meta() *meta {
 }
 ```
 ## Freelist 页
-
+数据库文件内部是按页的单位管理，这就涉及到如何分配页和回收页（要释放旧的页，旧的页面是从数据复制到新事务）。事务提交的阶段会把树结点分写入到一个页或多个页（页大小4096字节），根据磁盘特性顺序写比随机写要快，所以在分配页面时如果有溢出页会开辟连续的页。
+![freelist](./img/freelist.png)
+可以看到上方图事务修改后 pgid:3 的页面变成了脏页，会分配新的页面 pgid:4，从新刷入磁盘。这样可以达到事务隔离，旧的事务只看到 pgid:3 页面,而无法看到新事务的新页面（因为页面会由meta关联）。
 ```go
 //freelist.go
 type freelist struct {
     ids []pgid  //空闲页 id 列表
-    pending map[txid][]pgid 
-    cache   map[pgid]bool  
+    pending map[txid][]pgid //每个事务将要释放的旧页面id
+    cache   map[pgid]bool  //找所有空闲和待处理的页面id
 }
 ```
-
+分配页面都是等待事务commit时调用 freelist.go#allocate() 方法才去分配，如果文件大小不够会开辟空间重新映射。 页面释放到pending后没有真正回收到ids，需要等待下一个事务开启才会把上一个事务的旧页释放到空闲页。
 ## 内存存储结构
 
 # 资源管理
@@ -137,7 +140,39 @@ type freelist struct {
 ## 内存管理
 
 ## 磁盘页管理
+```go
+//freelist.go
+func (f *freelist) allocate(n int) pgid {
+	if len(f.ids) == 0 {
+		return 0
+	}
+	var initial, previd pgid
+	for i, id := range f.ids {
+		if id <= 1 {
+		    panic(fmt.Sprintf("invalid page allocation: %d", id))
+		}
 
+		if previd == 0 || id-previd != 1 {
+			initial = id
+		}
+		
+		if (id-initial)+1 == pgid(n) {
+			if (i + 1) == n {
+				f.ids = f.ids[i+1:]
+			} else {
+				copy(f.ids[i-n+1:], f.ids[i+1:])
+				f.ids = f.ids[:len(f.ids)-n]
+			}
+			for i := pgid(0); i < pgid(n); i++ {
+				delete(f.cache, initial+i)
+			}
+			return initial
+		}
+		previd = id
+	}
+	return 0
+}
+```
 # B+树的操作
 
 ## 查找元素
@@ -159,7 +194,7 @@ type freelist struct {
 ## 写事务
 
 ## 事务回滚
-
+pending
 # 参考文章
 
 [boltdb 源码分析-我叫尤加利](https://youjiali1995.github.io/storage/boltdb/) <br/>
