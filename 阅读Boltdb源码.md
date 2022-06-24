@@ -54,7 +54,15 @@ Meta 页为元数据页用于描述数据库文件中其他页在哪，FreeList 
 
 ## 基础页面Page
 所有的page都是基于这个结构构建，page这个数据结构分为两个部分，(id...)和ptr，前部分相当于描述这个页，后部分是页的具体内容。其他字段看注释很好理解，overflow 字段是因为一个树结点可能占用几个页面，它的原理是记录溢出页面数量，通过递增页面Id可访问到。在commit的时候才会分配这些页面。
-
+```go
+//页面类型
+const (
+	branchPageFlag   = 0x01
+	leafPageFlag     = 0x02
+	metaPageFlag     = 0x04
+	freelistPageFlag = 0x10
+) 
+```
 ```go 
 type page struct {
    //页id 
@@ -87,7 +95,7 @@ type meta struct {
     magic    uint32 
     version  uint32 
     pageSize uint32 
-    flags    uint32 
+    flags    uint32  
     root     bucket //树的根节点
     freelist pgid   
     pgid     pgid  //当前最大页面id范围
@@ -120,7 +128,7 @@ func (db *DB) meta() *meta {
    }
 }
 ```
-## Freelist 页
+## Freelist Page
 数据库文件内部是按页的单位管理，这就涉及到如何分配页和回收页（要释放旧的页，旧的页面是从数据复制到新事务）。事务提交的阶段会把树结点分写入到一个页或多个页（页大小4096字节），根据磁盘特性顺序写比随机写要快，所以在分配页面时如果有溢出页会开辟连续的页。
 ![freelist](./img/freelist.png)
 可以看到上方图事务修改后 pgid:3 的页面变成了脏页，会分配新的页面 pgid:4，从新刷入磁盘。这样可以达到事务隔离，旧的事务只看到 pgid:3 页面,而无法看到新事务的新页面（因为页面会由meta关联）。
@@ -132,8 +140,25 @@ type freelist struct {
     cache   map[pgid]bool  //找所有空闲和待处理的页面id
 }
 ```
+## Left Page
 分配页面都是等待事务commit时调用 freelist.go#allocate() 方法才去分配，如果文件大小不够会开辟空间重新映射。 页面释放到pending后没有真正回收到ids，需要等待下一个事务开启才会把上一个事务的旧页释放到空闲页。
 ## 内存存储结构
+磁盘文件保存的page结构，page结构并没有为查找数据做处理，需要从page转换到node节点树结构。
+```go
+type node struct {
+    bucket     *Bucket  //所属的Bucket
+    isLeaf     bool     //Branch和Leaf是共用一个结点，用于区分
+    unbalanced bool     //是否平衡
+    spilled    bool     //是否分裂了
+    key        []byte   
+    pgid       pgid    //属于页
+    parent     *node   //父结点
+    children   nodes  //子结点
+    inodes     inodes //内部元素
+}
+
+```
+
 
 # 资源管理
 
@@ -195,8 +220,10 @@ func (f *freelist) allocate(n int) pgid {
 
 ## 事务回滚
 pending
-# 参考文章
 
+
+
+参考文章</br>
 [boltdb 源码分析-我叫尤加利](https://youjiali1995.github.io/storage/boltdb/) <br/>
 [自底向上分析boltdb](https://www.bookstack.cn/read/jaydenwen123-boltdb_book/00fe39712cec954e.md)
 
