@@ -12,9 +12,6 @@ tags:
 
 BoltDB 整体很简单，没有 SQL ，没有分布式，等等，只是一个纯粹的带简单事务的数据库。
 
-//TODO 描述文章的路径
-
-
 # BoltDB 的介绍
 
 **原介绍**  项目地址：[github](https://github.com/boltdb/bolt)
@@ -61,22 +58,23 @@ const (
 	leafPageFlag     = 0x02
 	metaPageFlag     = 0x04
 	freelistPageFlag = 0x10
-) 
-```
-```go 
+)
+
+
 type page struct {
-   //页id 
-   id       pgid
-   //区分页类型
-   flags    uint16
-   //BranchPage和LeafPage数据元素数量
-   count    uint16 
-   //溢出连续页面数量
-   overflow uint32
-   //具体数据
-   ptr      uintptr
+    //页id 
+    id       pgid
+    //区分页类型
+    flags    uint16
+    //BranchPage和LeafPage数据元素数量
+    count    uint16
+    //溢出连续页面数量
+    overflow uint32
+    //具体数据
+    ptr      uintptr
 }
 ```
+
 ptr无符号指针，指向内存。可以把内存当作大数组，而ptr存放的就是数组的index。Index+Size可以获取整个页内容。
 
 ![db_file_from](./img/page.png)</br>
@@ -94,16 +92,16 @@ func (p *page) meta() *meta {
 type meta struct {
     magic    uint32 
     version  uint32 
-    pageSize uint32 
-    flags    uint32  
+    pageSize uint32  //页大小
+    flags    uint32  //暂无使用  
     root     bucket //树的根节点
-    freelist pgid   
+    freelist pgid    
     pgid     pgid  //当前最大页面id范围
     txid     txid  //事务id
     checksum uint64 
 }
 ```
-把 meta 分成三个部分 (magic、version,flags)、(root,freelist)、(txid,checksum)。第一部分用于文件是否正确，第二部分用于逻辑关联其他页（可以看到下方图），第三部分用于校验meta事务是否可用。
+把 meta 分成四个部分 (magic、version,flags)、(root,freelist)、(txid,checksum)、(pgid)。第一部分用于校验文件是否正确，第二部分用于逻辑关联其他页（可以看到下方图），第三部分用于校验meta事务是否可用，第四部分属于资源管理。
 Meta0 和 Meta1 是一样的结构，相当于备份，在事务Commit时，写入磁盘中崩溃可以使用其中一个进行恢复。
 
 可以看到 root 字段是 bucket 类型，其实bucket里面包装了 pgid。从上文知道一个页是4096字节，那么访问数据库文件的 0x0000 至 0x1000 字节就是第一个 meta 页面，（4096+4096）0x1000 至 0x2000 是第二个页面，那么得到 meta 页面根据其他 pgid*4096 即可访问到其他页面数据。
@@ -140,10 +138,31 @@ type freelist struct {
     cache   map[pgid]bool  //找所有空闲和待处理的页面id
 }
 ```
-## Left Page
+## Left & branch Page
 分配页面都是等待事务commit时调用 freelist.go#allocate() 方法才去分配，如果文件大小不够会开辟空间重新映射。 页面释放到pending后没有真正回收到ids，需要等待下一个事务开启才会把上一个事务的旧页释放到空闲页。
+Bucket 可以嵌套 子Bucket,是共用leafPageElement结构flags区分。
+![freelist](./img/leafPage.png)
+```go
+type leafPageElement struct {
+    flags uint32 //区分是数据结点还是子Bucket
+    pos   uint32   
+    ksize uint32
+    vsize uint32
+}
+```
+![freelist](./img/branchPage.jpg)
+```go
+type branchPageElement struct {
+    pos   uint32  
+    ksize uint32
+    pgid  pgid   //指向下一个leaf或branch page
+	
+}
+
+```
 ## 内存存储结构
 磁盘文件保存的page结构，page结构并没有为查找数据做处理，需要从page转换到node节点树结构。
+
 ```go
 type node struct {
     bucket     *Bucket  //所属的Bucket
@@ -157,44 +176,52 @@ type node struct {
     inodes     inodes //内部元素
 }
 
-```
+type bucket struct {
+    root     pgid   
+    sequence uint64 
+}
 
+type Bucket struct {
+    *bucket   //继承bucket 
+    tx       *Tx               
+    buckets  map[string]*Bucket 
+    page     *page             
+    rootNode *node              
+    nodes    map[pgid]*node     
+    FillPercent float64
+}
+```
 # 资源管理
 
 ## 内存管理
-
+//TODO mmap原理，meta读取写入
 ## 磁盘页管理
+//TODO 页分配回收，事务回滚，
 ```go
 //freelist.go
-func (f *freelist) allocate(n int) pgid {
-	if len(f.ids) == 0 {
-		return 0
-	}
-	var initial, previd pgid
-	for i, id := range f.ids {
-		if id <= 1 {
-		    panic(fmt.Sprintf("invalid page allocation: %d", id))
-		}
-
-		if previd == 0 || id-previd != 1 {
-			initial = id
-		}
-		
-		if (id-initial)+1 == pgid(n) {
-			if (i + 1) == n {
-				f.ids = f.ids[i+1:]
-			} else {
-				copy(f.ids[i-n+1:], f.ids[i+1:])
-				f.ids = f.ids[:len(f.ids)-n]
-			}
-			for i := pgid(0); i < pgid(n); i++ {
-				delete(f.cache, initial+i)
-			}
-			return initial
-		}
-		previd = id
-	}
-	return 0
+func (db *DB) allocate(count int) (*page, error) {
+    var buf []byte
+    if count == 1 {
+        buf = db.pagePool.Get().([]byte)
+    } else {
+        buf = make([]byte, count*db.pageSize)
+    }
+    p := (*page)(unsafe.Pointer(&buf[0]))
+    p.overflow = uint32(count - 1)
+	
+    if p.id = db.freelist.allocate(count); p.id != 0 {
+        return p, nil
+    }
+	
+    p.id = db.rwtx.meta.pgid
+    var minsz = int((p.id+pgid(count))+1) * db.pageSize
+    if minsz >= db.datasz {
+        if err := db.mmap(minsz); err != nil {
+            return nil, fmt.Errorf("mmap allocate error: %s", err)
+        }
+    }
+    db.rwtx.meta.pgid += pgid(count)
+    return p, nil
 }
 ```
 # B+树的操作
@@ -208,9 +235,9 @@ func (f *freelist) allocate(n int) pgid {
 ## 树平衡
 
 ### 分裂
-
+//分裂条件
 ### 合并
-
+合并条件
 # 事务
 
 ## 读事务
@@ -219,7 +246,6 @@ func (f *freelist) allocate(n int) pgid {
 
 ## 事务回滚
 pending
-
 
 
 参考文章</br>
