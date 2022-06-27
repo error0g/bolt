@@ -150,7 +150,7 @@ type leafPageElement struct {
     vsize uint32
 }
 ```
-![freelist](./img/branchPage.jpg)
+![freelist](./img/branchPage.png)
 ```go
 type branchPageElement struct {
     pos   uint32  
