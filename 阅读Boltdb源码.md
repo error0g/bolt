@@ -225,7 +225,7 @@ func (db *DB) mmap(minsz int) error {
     db.meta1 = db.page(1).meta()
 }
 ```
-实际上 meta 就是从 db.data 转换来的，其实就是 mmap 映射文件，所以希望在看 `tx.writeMeta()` 方法时不要惊讶，为什么写入的是文件 meta 马上就可以读取到，而不用重新读取文件这种操作。
+实际上 meta 就是从 db.data 转换来的，其实就是 mmap 映射文件，所以希望在看 `tx.writeMeta()` 方法时不要惊讶，为什么写入的是文件，新的 meta 马上就可以读取到，而不用重新读取文件这种操作。
 ## 磁盘页管理
 //TODO 页分配回收，事务回滚，
 ```go
