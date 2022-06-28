@@ -7,10 +7,11 @@ tags:
 
 # 阅读建议
 
-文章由浅入深，出现新概念会用一两句话介绍，而不用继续陷入分支细节。
+文章由浅入深，出现新概念会用一两句话介绍，而不用继续陷入分支细节。从数据库存储文件结构格式到如何保证文件正确（事务）的存储，全程围绕着下方第一块代码。
 阅读时最好具备(Go、Java、C++)其中一门语言。一些少许的数据库知识，如果你还在处于不知道基础的 SQL 怎么写的阶段建议先学基础，再回来继续阅读。
 
-BoltDB 整体很简单，没有 SQL ，没有分布式，等等，只是一个纯粹的带简单事务的数据库。
+BoltDB 整体很简单，没有 SQL ，没有复杂的内存管理，没有分布式，等等，只是一个纯粹的带简单事务的数据库。
+
 
 # BoltDB 的介绍
 
@@ -105,6 +106,7 @@ type meta struct {
 Meta0 和 Meta1 是一样的结构，相当于备份，在事务Commit时，写入磁盘中崩溃可以使用其中一个进行恢复。
 
 可以看到 root 字段是 bucket 类型，其实bucket里面包装了 pgid。从上文知道一个页是4096字节，那么访问数据库文件的 0x0000 至 0x1000 字节就是第一个 meta 页面，（4096+4096）0x1000 至 0x2000 是第二个页面，那么得到 meta 页面根据其他 pgid*4096 即可访问到其他页面数据。
+
 ![meta](./img/meta.png)
 
 有两个 meta 页很必要，事务有一个特性就是数据一致性，如果在一个事务中提交写入磁盘阶段，一部分数据写入了磁盘但是突然发生崩溃，导致另一部分相关的数据没有写入磁盘就会产生脏数据。数据库每次写入只使用一个meta页面，开启事务时候会复制一个meta页给事务，写入磁盘的时候是写到另外一个meta页面，这样不会干扰到之前的正常meta页面。在启动数据库时会校验 meta 是否完整，选择完整的 meta 进行恢复，可以看到下方代码。
@@ -128,7 +130,9 @@ func (db *DB) meta() *meta {
 ```
 ## Freelist Page
 数据库文件内部是按页的单位管理，这就涉及到如何分配页和回收页（要释放旧的页，旧的页面是从数据复制到新事务）。事务提交的阶段会把树结点分写入到一个页或多个页（页大小4096字节），根据磁盘特性顺序写比随机写要快，所以在分配页面时如果有溢出页会开辟连续的页。
+
 ![freelist](./img/freelist.png)
+
 可以看到上方图事务修改后 pgid:3 的页面变成了脏页，会分配新的页面 pgid:4，从新刷入磁盘。这样可以达到事务隔离，旧的事务只看到 pgid:3 页面,而无法看到新事务的新页面（因为页面会由meta关联）。
 ```go
 //freelist.go
@@ -139,8 +143,9 @@ type freelist struct {
 }
 ```
 ## Left & branch Page
-分配页面都是等待事务commit时调用 freelist.go#allocate() 方法才去分配，如果文件大小不够会开辟空间重新映射。 页面释放到pending后没有真正回收到ids，需要等待下一个事务开启才会把上一个事务的旧页释放到空闲页。
-Bucket 可以嵌套 子Bucket,是共用leafPageElement结构flags区分。
+分配页面都是等待事务 commit 时调用 freelist.go#allocate() 方法才去分配，如果文件大小不够会开辟空间重新映射。 页面释放到 pending 后没有真正回收到 ids，需要等待下一个事务开启才会把上一个事务的旧页释放到空闲页。
+Bucket 可以嵌套 子 Bucket ,是共用 leafPageElement 结构 flags 区分。
+
 ![freelist](./img/leafPage.png)
 ```go
 type leafPageElement struct {
@@ -156,14 +161,18 @@ type branchPageElement struct {
     pos   uint32  
     ksize uint32
     pgid  pgid   //指向下一个leaf或branch page
-	
 }
-
 ```
 ## 内存存储结构
-磁盘文件保存的page结构，page结构并没有为查找数据做处理，需要从page转换到node节点树结构。
-
+磁盘文件保存的 page 结构，因为 page 结构的设计并没有树操作做处理，所以需要从 page 转换到 node 节点树结构。
+page 转 node 的 read 方法实际上是调用 page 方法 例如获取 page 的 key 原理是 `page.ptr[&node+pos:ksize]`，然后把按数组方式存入 inodes。
 ```go
+//page转node
+func (n *node) read(p *page)
+{
+	//....
+}
+
 type node struct {
     bucket     *Bucket  //所属的Bucket
     isLeaf     bool     //Branch和Leaf是共用一个结点，用于区分
@@ -173,7 +182,7 @@ type node struct {
     pgid       pgid    //属于页
     parent     *node   //父结点
     children   nodes  //子结点
-    inodes     inodes //内部元素
+    inodes     inodes //内部元素 KV数组
 }
 
 type bucket struct {
@@ -194,7 +203,29 @@ type Bucket struct {
 # 资源管理
 
 ## 内存管理
-//TODO mmap原理，meta读取写入
+Bolt 没有做独立的内存管理，而使用 mmap 去管理文件内存，mmap 是操作系统内存的管理内存方式。读取磁盘数据需要先读取到内存（磁盘和 CPU 的速度差异），但是磁盘文件总是比内存空间大，需要淘汰不需要缓存的磁盘页，让出内存给需要缓存的磁盘页，mmap 就是负责缓存和淘汰缓存。
+它的原理是在磁盘开辟一块空间作为虚拟内存，里面存储着虚拟内存地址与物理地址的映射，内存会加载这一小块虚拟地址，操作时会得到虚拟地址。最终达到的效果就是文件不需要自己读取文件到内存，而是由操作系统去完成，操作文件跟操作内存一样。
+```go
+//bolt_windows.go
+func mmap(db *DB, sz int) error {
+    //... 
+    db.data = ((*[maxMapSize]byte)(unsafe.Pointer(addr))) //data 是整个文件 mmap 映射
+    db.datasz = sz
+    return nil
+}
+
+//db.go
+func (db *DB) page(id pgid) *page {
+    pos := id * pgid(db.pageSize)
+    return (*page)(unsafe.Pointer(&db.data[pos]))
+}
+//db.go
+func (db *DB) mmap(minsz int) error {
+    db.meta0 = db.page(0).meta()
+    db.meta1 = db.page(1).meta()
+}
+```
+实际上 meta 就是从 db.data 转换来的，其实就是 mmap 映射文件，所以希望在看 `tx.writeMeta()` 方法时不要惊讶，为什么写入的是文件 meta 马上就可以读取到，而不用重新读取文件这种操作。
 ## 磁盘页管理
 //TODO 页分配回收，事务回滚，
 ```go
