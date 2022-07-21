@@ -279,8 +279,4 @@ func (db *DB) allocate(count int) (*page, error) {
 pending
 
 
-参考文章</br>
-[boltdb 源码分析-我叫尤加利](https://youjiali1995.github.io/storage/boltdb/) <br/>
-[自底向上分析boltdb](https://www.bookstack.cn/read/jaydenwen123-boltdb_book/00fe39712cec954e.md)
-
 
